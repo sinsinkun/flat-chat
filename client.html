@@ -52,6 +52,7 @@
       background-color: var(--color-highlight-2);
     }
     ul {
+      margin: 0;
       padding: 0;
       text-align: center;
     }
@@ -59,6 +60,11 @@
       margin-bottom: 4px;
       padding: 0;
       list-style: none;
+    }
+    h2, h3, h4 {
+      margin: 0;
+      padding: 0;
+      margin-bottom: 8px;
     }
     .hidden {
       display: none !important;
@@ -80,12 +86,46 @@
     .card > * {
       margin: 4px;
     }
+    .chat-box {
+      display: grid;
+      grid-template-columns: 3fr 1fr;
+      width: 80vw;
+      height: 80vh;
+      margin-bottom: 24px;
+    }
+    .msg-box {
+      border: 1px solid var(--color-highlight-2);
+      box-shadow: 0 0 5px var(--color-primary);
+      padding: 12px 6px;
+      border-radius: 4px;
+      margin-bottom: 12px;
+      min-height: 80%;
+      overflow: auto;
+    }
+    .msg-box ul {
+      text-align: left;
+    }
+    .send-box {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .user-list, .user-list > * {
+      text-align: right;
+    }
+    .icon {
+      height: 50px;
+      width: 50px;
+      border-radius: 25px;
+      border: 1px solid var(--color-bg);
+      background-color: var(--color-bg);
+    }
   </style>
 </head>
 
 <body>
   <h1>Tea Time ☕</h1>
-
+  <!-- Login UI -->
   <div id="login-box" class="card">
     <input id="server-input" type="text" placeholder="Host IP" value="localhost:3000" />
     <input id="name-input" type="text" placeholder="Username" />
@@ -94,23 +134,31 @@
       <button id="login-submit-btn">Enter</button>
     </div>
   </div>
-
+  <!-- Room Select UI -->
   <div id="room-select-box" class="card hidden">
     <h2>Pick a room</h2>
     <ul id="room-list"></ul>
   </div>
-
-  <div id="chat-ui" class="card hidden">
-    <div id="messge-box">
-      Message box: todo
+  <!-- Chat UI -->
+  <div id="chat-ui" class="card chat-box hidden">
+    <div>
+      <h3 id="chat-room-title">Room name</h3>
+      <div id="message-box" class="msg-box">
+        <ul id="message-list">
+          <li>User: Message</li>
+        </ul>
+      </div>
+      <div id="send-box" class="send-box">
+        <img id="send-user-icon" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" class="icon" />
+        <span style="width:4px"></span>
+        <input id="message-input" type="text" placeholder="Enter Message" style="flex-grow: 1;" />
+        <span style="width:4px"></span>
+        <button id="send-msg-btn">Send</button>
+      </div>
     </div>
-  
-    <div id="send-box">
-      Send: todo
-    </div>
-  
-    <div id="user-list">
-      User list: todo
+    <div id="user-list" class="user-list">
+      <h3 id="user-list-title">Users (0)</h3>
+      <ul id="user-list-list"></ul>
     </div>
   </div>
 
@@ -126,7 +174,13 @@
     const loginErrorMsg = document.getElementById("login-error");
     const loginSubmit = document.getElementById("login-submit-btn");
 
+    const chatTitle = document.getElementById("chat-room-title");
+    const msgList = document.getElementById("message-list");
+    const msgInput = document.getElementById("message-input");
+    const msgSubmit = document.getElementById("send-msg-btn");
+
     const wsActions = {
+      confirmation: "confirmation",
       register: "register",
       chat: "chat",
       createRoom: "createRoom",
@@ -135,15 +189,11 @@
       fetchRooms: "fetchRooms",
       fetchUsers: "fetchUsers",
     }
-    const needResponse = [
-      wsActions.createRoom,
-      wsActions.joinRoom,
-      wsActions.leaveRoom,
-    ];
     let socket = null;
-    let awaitingResponse = "";
+    let wscbs = [];
     let rooms = [];
     let messages = [];
+    let users = [];
 
     // helper fn to switch between screens
     function switchUI(screenIdx) {
@@ -165,38 +215,40 @@
       if (!socket) disconnect();
       if (Object.values(wsActions).includes(action)) {
         socket.send(JSON.stringify({ action, msg, meta }));
-        if (needResponse.includes(action)) {
-          awaitingResponse = action;
-        }
       } else {
         console.warn("Unrecognized WS action:", action);
       }
     }
 
-    // handle async ws calls
-    function handleWsCode(code) {
-      if (!awaitingResponse) return;
-      switch(awaitingResponse) {
-        case wsActions.joinRoom:
-          if (!code) switchUI(2);
-          break;
-        default:
-          break;
-      }
+    // refresh user list
+    function renderUserList() {
+      const userListTitle = document.getElementById("user-list-title");
+      const userList = document.getElementById("user-list-list");
+      userListTitle.innerText = `Users (${users.length})`;
+      // clear list and start over
+      userList.replaceChildren();
+      users.forEach(user => {
+        const li = document.createElement("li");
+        li.innerText = user.name;
+        if (user.online) li.style.color = "var(--color-success)";
+        else li.style.color = "var(--color-error)";
+        userList.appendChild(li);
+      })
     }
 
     // join room
     function joinRoom(roomName) {
       if (!socket) disconnect();
-      console.log("attempting to join room", roomName);
-      wsMessage(wsActions.joinRoom, roomName);
+      console.log("Attempting to join room", roomName);
+      wsMessage(wsActions.joinRoom, roomName, undefined);
     }
 
     // refresh room list
     function renderRoomList() {
       const roomList = document.getElementById("room-list");
       if (roomSelect.classList.contains("hidden") || !roomList) return;
-
+      // clear list and start over
+      roomList.replaceChildren();
       rooms.forEach(roomName => {
         const li = document.createElement("li");
         const btn = document.createElement("button");
@@ -210,6 +262,7 @@
     /* -- websocket handling -- */
     function onOpen(event) {
       // switch to room select UI
+      const name = nameInput.value;
       wsMessage(wsActions.register, undefined, name);
       wsMessage(wsActions.fetchRooms);
       switchUI(1);
@@ -221,16 +274,24 @@
       if (typeof event.data === "string") {
         const message = JSON.parse(event.data);
         switch (message.action) {
-          case "confirmation":
+          case wsActions.confirmation:
+          case wsActions.register:
             console.log(`Server: ${message.msg} (${message.meta})`);
-            if (awaitingResponse) {
-              handleWsCode(message.meta);
-            }
             break;
-          case "fetchRooms":
+          case wsActions.fetchRooms:
             console.log("Rooms:", message.msg);
-            rooms = message.msg;
+            if (Array.isArray(message.msg)) rooms = message.msg;
             renderRoomList();
+            break;
+          case wsActions.joinRoom:
+            switchUI(2);
+            chatTitle.innerText = message.meta;
+            wsMessage(wsActions.fetchUsers, message.meta);
+            break;
+          case wsActions.fetchUsers:
+            console.log("Users:", message.msg);
+            if (Array.isArray(message.msg)) users = message.msg;
+            renderUserList();
             break;
           default:
             console.log("Unknown action", message);

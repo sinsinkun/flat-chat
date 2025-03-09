@@ -31,7 +31,7 @@ enum WsActions {
   fetchUsers = "fetchUsers",
 }
 
-type MessageData = string | Array<string> | Array<number> | Buffer<ArrayBufferLike> | undefined;
+type MessageData = string | Array<string|User> | Buffer<ArrayBufferLike> | undefined;
 interface WsMessage {
   action: WsActions;
   meta?: string | number;
@@ -40,8 +40,9 @@ interface WsMessage {
 
 // global variables
 let uId: number = 1;
-const roomCache: Room[] = [{ name: "global" }];
+let roomCache: Room[] = [{ name: "Ming" }];
 let userCache: User[] = [];
+const CLEAN_UP_INTERVAL = 30000;
 
 // WS actions
 function userId(): number {
@@ -55,7 +56,7 @@ function registerUser(userId: number, msg: WsMessage) {
     id: userId,
     name: msg.meta as string,
     online: true,
-    room: "-",
+    room: "",
   };
   userCache.push(newUser);
 }
@@ -69,12 +70,17 @@ function createRoom(msg: WsMessage): boolean {
   return true;
 }
 
-function joinRoom(ws: Bun.ServerWebSocket<unknown>, userId: number, room: MessageData): boolean {
+function joinRoom(server: Bun.Server, ws: Bun.ServerWebSocket<unknown>, userId: number, room: MessageData): boolean {
   const [existingRoom] = roomCache.filter(rm => rm.name === room);
   const [user] = userCache.filter(usr => usr.id === userId);
   if (!existingRoom || !user) return false;
   user.room = existingRoom.name;
-  ws.subscribe(room as string);
+  const roomName = room as string;
+  server.publish(room as string, JSON.stringify({
+    action: WsActions.fetchUsers,
+    msg: userCache.filter(user => user.room === roomName),
+  }));
+  ws.subscribe(roomName);
   return true;
 }
 
@@ -93,6 +99,21 @@ function leaveRoom(ws: Bun.ServerWebSocket<unknown>, userId: number, room: Messa
   return true;
 }
 
+// periodically clean out offline users/empty rooms
+setInterval(() => {
+  const activeRooms: Map<string, number> = new Map;
+  userCache = userCache.filter(user => {
+    if (user.room !== "") {
+      const cur = activeRooms.get(user.room);
+      if (!cur) activeRooms.set(user.room, 1);
+      else activeRooms.set(user.room, cur + 1);
+    }
+    return user.online === true;
+  });
+  console.log("Active rooms:", activeRooms);
+  roomCache = roomCache.filter(room => room.name === "Ming" || activeRooms.has(room.name));
+}, CLEAN_UP_INTERVAL);
+
 // server setup
 const server = Bun.serve({
   port: 3000,
@@ -110,13 +131,13 @@ const server = Bun.serve({
   websocket: {
     message(ws, message) {
       const connData = ws.data as ConnectionData;
-      let returnMsg = false;
+      let returnMsg = true;
       let retMsg: WsMessage = {
         action: WsActions.unknown,
       };
       if (typeof message === "string") {
-        retMsg.action = WsActions.confirmation;
         const wsMsg = JSON.parse(message) as WsMessage;
+        retMsg.action = wsMsg.action;
         switch (wsMsg.action) {
           case WsActions.register:
             registerUser(connData.userId, wsMsg);
@@ -124,29 +145,31 @@ const server = Bun.serve({
             break;
           case WsActions.chat:
             if (!sendMessage(server, wsMsg)) retMsg.msg = "Failed to send message";
+            else returnMsg = false;
             break;
           case WsActions.createRoom:
-            returnMsg = true;
             if (createRoom(wsMsg)) retMsg.msg = "Success";
             else retMsg.msg = "Failed";
             break;
           case WsActions.joinRoom:
-            returnMsg = true;
-            if (joinRoom(ws, connData.userId, wsMsg.msg)) retMsg.msg = "Success";
+            if (joinRoom(server, ws, connData.userId, wsMsg.msg)) {
+              retMsg.msg = "Success";
+              if (typeof wsMsg.msg === "string") retMsg.meta = wsMsg.msg;
+            }
             else retMsg.msg = "failed";
             break;
           case WsActions.leaveRoom:
-            returnMsg = true;
             if (leaveRoom(ws, connData.userId, wsMsg.msg)) retMsg.msg = "Success";
             else retMsg.msg = "failed";
             break;
           case WsActions.fetchRooms:
-            returnMsg = true;
-            retMsg.action = WsActions.fetchRooms;
             retMsg.msg = roomCache.map(room => room.name);
             break;
+          case WsActions.fetchUsers:
+            const roomFilter = wsMsg.msg as string;
+            retMsg.msg = userCache.filter(user => user.room === roomFilter);
+            break;
           default:
-            returnMsg = true;
             retMsg.msg = "Unrecognized message from user";
             break;
         }
@@ -167,7 +190,21 @@ const server = Bun.serve({
     close(ws, _code, _message) {
       const data = ws.data as ConnectionData;
       console.log(`Connection ended (${data.userId})`);
-      userCache = userCache.filter(usr => usr.id !== data.userId);
+      let room = "";
+      // update user cache
+      userCache.forEach(user => {
+        if (user.id === data.userId) {
+          room = user.room;
+          user.online = false;
+        }
+      });
+      // send msg to room
+      if (room) {
+        server.publish(room, JSON.stringify({
+          action: WsActions.fetchUsers,
+          msg: userCache.filter(user => user.room === room),
+        }));
+      }
     },
   }
 });
