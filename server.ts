@@ -128,17 +128,17 @@ const server = Bun.serve({
           case WsActions.createRoom:
             returnMsg = true;
             if (createRoom(wsMsg)) retMsg.msg = "Success";
-            retMsg.msg = "Failed";
+            else retMsg.msg = "Failed";
             break;
           case WsActions.joinRoom:
             returnMsg = true;
             if (joinRoom(ws, connData.userId, wsMsg.msg)) retMsg.msg = "Success";
-            retMsg.msg = "failed";
+            else retMsg.msg = "failed";
             break;
           case WsActions.leaveRoom:
             returnMsg = true;
             if (leaveRoom(ws, connData.userId, wsMsg.msg)) retMsg.msg = "Success";
-            retMsg.msg = "failed";
+            else retMsg.msg = "failed";
             break;
           case WsActions.fetchRooms:
             returnMsg = true;

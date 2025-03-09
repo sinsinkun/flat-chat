@@ -51,6 +51,15 @@
       cursor: pointer;
       background-color: var(--color-highlight-2);
     }
+    ul {
+      padding: 0;
+      text-align: center;
+    }
+    ul > li {
+      margin-bottom: 4px;
+      padding: 0;
+      list-style: none;
+    }
     .hidden {
       display: none !important;
     }
@@ -87,7 +96,8 @@
   </div>
 
   <div id="room-select-box" class="card hidden">
-    <div></div>
+    <h2>Pick a room</h2>
+    <ul id="room-list"></ul>
   </div>
 
   <div id="chat-ui" class="card hidden">
@@ -116,8 +126,24 @@
     const loginErrorMsg = document.getElementById("login-error");
     const loginSubmit = document.getElementById("login-submit-btn");
 
+    const wsActions = {
+      register: "register",
+      chat: "chat",
+      createRoom: "createRoom",
+      joinRoom: "join",
+      leaveRoom: "leave",
+      fetchRooms: "fetchRooms",
+      fetchUsers: "fetchUsers",
+    }
+    const needResponse = [
+      wsActions.createRoom,
+      wsActions.joinRoom,
+      wsActions.leaveRoom,
+    ];
     let socket = null;
+    let awaitingResponse = "";
     let rooms = [];
+    let messages = [];
 
     // helper fn to switch between screens
     function switchUI(screenIdx) {
@@ -127,29 +153,84 @@
       });
     }
 
+    // helper fn when encountering socket error
+    function disconnect(msg) {
+      loginErrorMsg.classList.remove("hidden");
+      loginErrorMsg.innerText = msg || "Disconnected from server";
+      switchUI(0);
+    }
+
+    // helper to enforce wsMessage shape
+    function wsMessage(action, msg, meta) {
+      if (!socket) disconnect();
+      if (Object.values(wsActions).includes(action)) {
+        socket.send(JSON.stringify({ action, msg, meta }));
+        if (needResponse.includes(action)) {
+          awaitingResponse = action;
+        }
+      } else {
+        console.warn("Unrecognized WS action:", action);
+      }
+    }
+
+    // handle async ws calls
+    function handleWsCode(code) {
+      if (!awaitingResponse) return;
+      switch(awaitingResponse) {
+        case wsActions.joinRoom:
+          if (!code) switchUI(2);
+          break;
+        default:
+          break;
+      }
+    }
+
+    // join room
+    function joinRoom(roomName) {
+      if (!socket) disconnect();
+      console.log("attempting to join room", roomName);
+      wsMessage(wsActions.joinRoom, roomName);
+    }
+
+    // refresh room list
+    function renderRoomList() {
+      const roomList = document.getElementById("room-list");
+      if (roomSelect.classList.contains("hidden") || !roomList) return;
+
+      rooms.forEach(roomName => {
+        const li = document.createElement("li");
+        const btn = document.createElement("button");
+        btn.onclick = () => joinRoom(roomName);
+        btn.innerText = roomName;
+        li.appendChild(btn);
+        roomList.append(li);
+      });
+    }
+
     /* -- websocket handling -- */
     function onOpen(event) {
       // switch to room select UI
-      socket.send(JSON.stringify({ action: "register", meta: name }));
-      socket.send(JSON.stringify({ action: "fetchRooms" }));
+      wsMessage(wsActions.register, undefined, name);
+      wsMessage(wsActions.fetchRooms);
       switchUI(1);
     }
     function onClose(event) {
-      console.error(`Server is no longer available (${event.code})`, event.reason);
-      loginErrorMsg.classList.remove("hidden");
-      loginErrorMsg.innerText = "Disconnected from server";
-      switchUI(0);
+      disconnect();
     }
     function onMessage(event) {
       if (typeof event.data === "string") {
         const message = JSON.parse(event.data);
         switch (message.action) {
           case "confirmation":
-            console.log("Server:", message.msg);
+            console.log(`Server: ${message.msg} (${message.meta})`);
+            if (awaitingResponse) {
+              handleWsCode(message.meta);
+            }
             break;
           case "fetchRooms":
             console.log("Rooms:", message.msg);
             rooms = message.msg;
+            renderRoomList();
             break;
           default:
             console.log("Unknown action", message);
@@ -193,10 +274,6 @@
       socket.addEventListener("message", onMessage);
       socket.addEventListener("close", onClose);
     });
-
-    /* -- room select handling -- */
-
-    /* -- message handling -- */
 
   </script>
 </body>
