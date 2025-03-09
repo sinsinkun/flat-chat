@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Headless Chat</title>
+  <style>
+    html {
+      box-sizing: border-box;
+      font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      /* styling */
+      --color-bg: #222;
+      --color-bg-2: #3f3f3f;
+      --color-text: #fff;
+      --color-primary: rgb(20, 77, 143);
+      --color-highlight: rgb(40, 126, 238);
+      --color-highlight-2: rgb(40, 238, 172);
+      --color-success: rgb(57, 224, 57);
+      --color-warn: rgb(199, 146, 33);
+      --color-error: rgb(218, 28, 28);
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background-color: var(--color-bg);
+      color: var(--color-text);
+    }
+    input {
+      border: 2px solid var(--color-bg);
+      outline: none;
+      padding: 6px;
+      border-radius: 6px;
+    }
+    input:focus {
+      border: 2px solid var(--color-highlight);
+    }
+    button {
+      border: 2px solid var(--color-bg);
+      padding: 6px 12px;
+      border-radius: 6px;
+      background-color: var(--color-highlight);
+      width: fit-content;
+    }
+    button:hover {
+      cursor: pointer;
+      background-color: var(--color-highlight-2);
+    }
+    .hidden {
+      display: none !important;
+    }
+    .error {
+      border-color: var(--color-error);
+      color: var(--color-error);
+    }
+    .card {
+      background-color: var(--color-bg-2);
+      border: 1px solid var(--color-primary);
+      box-shadow: 0 0 5px var(--color-primary);
+      margin: 4px;
+      padding: 12px;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+    }
+    .card > * {
+      margin: 4px;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Tea Time ☕</h1>
+
+  <div id="login-box" class="card">
+    <input id="server-input" type="text" placeholder="Host IP" value="localhost:3000" />
+    <input id="name-input" type="text" placeholder="Username" />
+    <p id="login-error" class="error hidden"></p>
+    <div style="text-align: right;">
+      <button id="login-submit-btn">Enter</button>
+    </div>
+  </div>
+
+  <div id="room-select-box" class="card hidden">
+    <div></div>
+  </div>
+
+  <div id="chat-ui" class="card hidden">
+    <div id="messge-box">
+      Message box: todo
+    </div>
+  
+    <div id="send-box">
+      Send: todo
+    </div>
+  
+    <div id="user-list">
+      User list: todo
+    </div>
+  </div>
+
+  <!-- logic -->
+  <script>
+    /* -- UI element selectors --  */
+    const loginBox = document.getElementById("login-box");
+    const roomSelect = document.getElementById("room-select-box");
+    const chatUi = document.getElementById("chat-ui");
+
+    const serverInput = document.getElementById("server-input");
+    const nameInput = document.getElementById("name-input");
+    const loginErrorMsg = document.getElementById("login-error");
+    const loginSubmit = document.getElementById("login-submit-btn");
+
+    let socket = null;
+    let rooms = [];
+
+    // helper fn to switch between screens
+    function switchUI(screenIdx) {
+      [loginBox, roomSelect, chatUi].forEach((screen, idx) => {
+        if (idx === screenIdx) screen.classList.remove("hidden");
+        else screen.classList.add("hidden");
+      });
+    }
+
+    /* -- websocket handling -- */
+    function onOpen(event) {
+      // switch to room select UI
+      socket.send(JSON.stringify({ action: "register", meta: name }));
+      socket.send(JSON.stringify({ action: "fetchRooms" }));
+      switchUI(1);
+    }
+    function onClose(event) {
+      console.error(`Server is no longer available (${event.code})`, event.reason);
+      loginErrorMsg.classList.remove("hidden");
+      loginErrorMsg.innerText = "Disconnected from server";
+      switchUI(0);
+    }
+    function onMessage(event) {
+      if (typeof event.data === "string") {
+        const message = JSON.parse(event.data);
+        switch (message.action) {
+          case "confirmation":
+            console.log("Server:", message.msg);
+            break;
+          case "fetchRooms":
+            console.log("Rooms:", message.msg);
+            rooms = message.msg;
+            break;
+          default:
+            console.log("Unknown action", message);
+            break;
+        }
+      }
+    }
+
+    /* -- login handling -- */
+    // clear error msging
+    serverInput.addEventListener("input", () => {
+      if (loginErrorMsg.innerText.length > 0) loginErrorMsg.innerText = "";
+      loginErrorMsg.classList.add("hidden");
+      serverInput.classList.remove("error");
+    });
+    nameInput.addEventListener("input", () => {
+      if (loginErrorMsg.innerText.length > 0) loginErrorMsg.innerText = "";
+      loginErrorMsg.classList.add("hidden");
+      nameInput.classList.remove("error");
+    })
+    // handle login
+    loginSubmit.addEventListener("click", () => {
+      const host = serverInput.value;
+      const name = nameInput.value;
+      // validation
+      if (!host.trim()) {
+        loginErrorMsg.classList.remove("hidden");
+        loginErrorMsg.innerText = "Missing host info";
+        serverInput.classList.add("error");
+        return;
+      }
+      if (!name.trim()) {
+        loginErrorMsg.classList.remove("hidden");
+        loginErrorMsg.innerText = "Missing host info";
+        nameInput.classList.add("error");
+        return;
+      }
+      // create websocket connection
+      socket = new WebSocket("ws://" + host + "/connect");
+      socket.addEventListener("open", onOpen);
+      socket.addEventListener("message", onMessage);
+      socket.addEventListener("close", onClose);
+    });
+
+    /* -- room select handling -- */
+
+    /* -- message handling -- */
+
+  </script>
+</body>
+
+</html>
