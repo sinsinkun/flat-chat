@@ -84,10 +84,13 @@ function joinRoom(server: Bun.Server, ws: Bun.ServerWebSocket<unknown>, userId: 
   return true;
 }
 
-function sendMessage(server: Bun.Server, msg: WsMessage): boolean {
-  if (!msg.meta || !msg.msg) return false;
-  if (typeof msg.msg !== "string") return false;
-  server.publish(msg.meta as string, msg.msg);
+function sendMessage(server: Bun.Server, userId: number, msg: WsMessage): boolean {
+  const [user] = userCache.filter(usr => usr.id === userId);
+  if (!user || !msg.msg || typeof msg.msg !== "string") return false;
+  server.publish(user.room, JSON.stringify({
+    action: WsActions.chat,
+    msg: [user.name, msg.msg]
+  }));
   return true;
 }
 
@@ -144,8 +147,12 @@ const server = Bun.serve({
             retMsg.msg = "Registered";
             break;
           case WsActions.chat:
-            if (!sendMessage(server, wsMsg)) retMsg.msg = "Failed to send message";
-            else returnMsg = false;
+            if (!sendMessage(server, connData.userId, wsMsg)) {
+              retMsg.action = WsActions.confirmation;
+              retMsg.msg = "Failed to send message";
+            } else {
+              returnMsg = false;
+            }
             break;
           case WsActions.createRoom:
             if (createRoom(wsMsg)) retMsg.msg = "Success";
@@ -174,7 +181,6 @@ const server = Bun.serve({
             break;
         }
       } else {
-        returnMsg = true;
         retMsg.msg = "Unrecognized message from user";
       }
       if (returnMsg) ws.send(JSON.stringify(retMsg));

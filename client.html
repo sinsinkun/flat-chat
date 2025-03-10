@@ -14,6 +14,7 @@
       --color-bg: #222;
       --color-bg-2: #3f3f3f;
       --color-text: #fff;
+      --color-faded-text: #888;
       --color-primary: rgb(20, 77, 143);
       --color-highlight: rgb(40, 126, 238);
       --color-highlight-2: rgb(40, 238, 172);
@@ -47,7 +48,7 @@
       background-color: var(--color-highlight);
       width: fit-content;
     }
-    button:hover {
+    button:hover:not(:disabled) {
       cursor: pointer;
       background-color: var(--color-highlight-2);
     }
@@ -105,6 +106,9 @@
     .msg-box ul {
       text-align: left;
     }
+    .msg {
+      display: flex;
+    }
     .send-box {
       display: flex;
       justify-content: center;
@@ -144,9 +148,7 @@
     <div>
       <h3 id="chat-room-title">Room name</h3>
       <div id="message-box" class="msg-box">
-        <ul id="message-list">
-          <li>User: Message</li>
-        </ul>
+        <ul id="message-list"></ul>
       </div>
       <div id="send-box" class="send-box">
         <img id="send-user-icon" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" class="icon" />
@@ -190,9 +192,7 @@
       fetchUsers: "fetchUsers",
     }
     let socket = null;
-    let wscbs = [];
     let rooms = [];
-    let messages = [];
     let users = [];
 
     // helper fn to switch between screens
@@ -207,6 +207,7 @@
     function disconnect(msg) {
       loginErrorMsg.classList.remove("hidden");
       loginErrorMsg.innerText = msg || "Disconnected from server";
+      loginSubmit.disabled = false;
       switchUI(0);
     }
 
@@ -259,6 +260,43 @@
       });
     }
 
+    // append message to list
+    function appendMessage(message) {
+      const [name, msg] = message;
+      const li = document.createElement("li");
+      li.classList.add("msg");
+      const n = document.createElement("b");
+      n.innerText = name + ":";
+      n.style.marginRight = "4px";
+      const m = document.createElement("span");
+      m.innerText = msg;
+      const s = document.createElement("span");
+      s.style.flexGrow = 1;
+
+      const now = new Date;
+      let hr = now.getHours().toString();
+      if (hr.length === 1) hr = "0" + hr;
+      let min = now.getMinutes().toString();
+      if (min.length === 1) min = "0" + min;
+      const d = document.createElement("span");
+      d.style.color = "var(--color-faded-text)";
+      d.innerText = `${hr}:${min}`;
+
+      li.appendChild(n);
+      li.appendChild(m);
+      li.appendChild(s);
+      li.appendChild(d);
+      msgList.appendChild(li);
+    }
+
+    // send message
+    function sendMessage() {
+      const message = msgInput.value;
+      console.log(message);
+      msgInput.value = "";
+      wsMessage(wsActions.chat, message);
+    }
+
     /* -- websocket handling -- */
     function onOpen(event) {
       // switch to room select UI
@@ -293,6 +331,10 @@
             if (Array.isArray(message.msg)) users = message.msg;
             renderUserList();
             break;
+          case wsActions.chat:
+            console.log("Chat:", message.msg);
+            appendMessage(message.msg);
+            break;
           default:
             console.log("Unknown action", message);
             break;
@@ -311,7 +353,10 @@
       if (loginErrorMsg.innerText.length > 0) loginErrorMsg.innerText = "";
       loginErrorMsg.classList.add("hidden");
       nameInput.classList.remove("error");
-    })
+    });
+    nameInput.addEventListener("keyup", (e) => {
+      if (e.key === "Enter") loginSubmit.click();
+    });
     // handle login
     loginSubmit.addEventListener("click", () => {
       const host = serverInput.value;
@@ -334,8 +379,16 @@
       socket.addEventListener("open", onOpen);
       socket.addEventListener("message", onMessage);
       socket.addEventListener("close", onClose);
+      loginSubmit.disabled = true;
     });
 
+    /* -- chat handling -- */
+    msgInput.addEventListener("keyup", (e) => {
+      if (e.key === "Enter") msgSubmit.click();
+    });
+    msgSubmit.addEventListener("click", () => {
+      sendMessage();
+    });
   </script>
 </body>
 
