@@ -102,17 +102,20 @@
       margin-bottom: 12px;
       min-height: 80%;
       overflow: auto;
+      max-width: 1400px;
     }
     .msg-box ul {
       text-align: left;
     }
     .msg {
       display: flex;
+      word-wrap: break-word;
     }
     .send-box {
       display: flex;
       justify-content: center;
       align-items: center;
+      flex-wrap: wrap;
     }
     .user-list, .user-list > * {
       text-align: right;
@@ -123,6 +126,19 @@
       border-radius: 25px;
       border: 1px solid var(--color-bg);
       background-color: var(--color-bg);
+    }
+    @media screen and (max-width: 720px) {
+      .chat-box {
+        grid-template-columns: 2fr 1fr;
+      }
+    }
+    @media screen and (max-width: 620px) {
+      .chat-box {
+        grid-template-columns: 1fr;
+      }
+      .user-list {
+        display: none;
+      }
     }
   </style>
 </head>
