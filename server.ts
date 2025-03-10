@@ -119,7 +119,7 @@ setInterval(() => {
 
 // server setup
 const server = Bun.serve({
-  port: 3000,
+  port: 3020,
   fetch(req, server) {
     const success = server.upgrade(req, {
       data: {
