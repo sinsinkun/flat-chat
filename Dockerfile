@@ -5,5 +5,5 @@ COPY . .
 RUN bun install
 
 USER bun
-EXPOSE 3000/tcp
+EXPOSE 3020/tcp
 ENTRYPOINT [ "bun", "run", "server.ts" ]

@@ -43,7 +43,7 @@ let uId: number = 1;
 let roomCache: Room[] = [{ name: "Ming" }];
 let userCache: User[] = [];
 const CLEAN_UP_INTERVAL = 300000; // 5 mins
-const PORT = Bun.env.PORT || 3000;
+const PORT = Bun.env.PORT || 3020;
 
 // WS actions
 function userId(): number {
