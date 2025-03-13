@@ -43,6 +43,7 @@ let uId: number = 1;
 let roomCache: Room[] = [{ name: "Ming" }];
 let userCache: User[] = [];
 const CLEAN_UP_INTERVAL = 300000; // 5 mins
+const PORT = Bun.env.PORT || 3000;
 
 // WS actions
 function userId(): number {
@@ -119,7 +120,7 @@ setInterval(() => {
 
 // server setup
 const server = Bun.serve({
-  port: 3000,
+  port: PORT,
   fetch(req, server) {
     const success = server.upgrade(req, {
       data: {
